@@ -441,7 +441,7 @@ function AdminDashboard() {
                     const share = pct(t.revenue, overview?.revenue);
                     const barW  = ranked[0]?.revenue ? ((t.revenue / ranked[0].revenue) * 100).toFixed(1) : 0;
                     return (
-                      <tr key={t.tenantId ?? i} style={{ borderBottom: `1px solid ${PALETTE.border}`, transition: "background 0.15s" }}
+                      <tr key={t.tenantname ?? i} style={{ borderBottom: `1px solid ${PALETTE.border}`, transition: "background 0.15s" }}
                         onMouseEnter={e => e.currentTarget.style.background = PALETTE.bg}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                         <td style={{ padding: "14px 18px" }}>
