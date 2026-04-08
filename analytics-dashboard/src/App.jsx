@@ -1,22 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, AreaChart, Area
 } from "recharts";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const TENANT_API_KEY = import.meta.env.VITE_TENANT_API_KEY;
+const ADMIN_API_KEY  = import.meta.env.VITE_TENANT_API_KEY;   // always from env
 const TENANT_BASE    = import.meta.env.VITE_TENANT_BASE;
 const ADMIN_BASE     = import.meta.env.VITE_ADMIN_BASE;
 
-const tenantFetch = (path) =>
+// Both tenant + admin use the same Bearer pattern; tenant key is injected at login
+const makeTenantFetch = (key) => (path) =>
   fetch(`${TENANT_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${TENANT_API_KEY}` },
+    headers: { Authorization: `Bearer ${key}` },
   }).then((r) => { if (!r.ok) throw new Error(`${r.status} ${r.url}`); return r.json(); });
 
 const adminFetch = (path) =>
   fetch(`${ADMIN_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${TENANT_API_KEY}` },
+    headers: { Authorization: `Bearer ${ADMIN_API_KEY}` },
   }).then((r) => { if (!r.ok) throw new Error(`${r.status} ${r.url}`); return r.json(); });
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -51,8 +52,31 @@ const PALETTE = {
 const ACCENT_COLORS = [PALETTE.teal, PALETTE.indigo, PALETTE.gold, PALETTE.rose, PALETTE.amber];
 const RANK_COLORS   = ["#B8972E", "#9CA3AF", "#CD7F32", "#3B52A4", "#0D7377"];
 
+// ─── GLOBAL STYLES ────────────────────────────────────────────────────────────
+function GlobalStyles() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap');
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html { font-size: 16px; }
+      body { background: ${PALETTE.bg}; color: ${PALETTE.slate}; font-family: 'DM Mono', monospace; -webkit-font-smoothing: antialiased; }
+      ::-webkit-scrollbar { width: 5px; }
+      ::-webkit-scrollbar-track { background: ${PALETTE.bg}; }
+      ::-webkit-scrollbar-thumb { background: ${PALETTE.border}; border-radius: 3px; }
+      @keyframes shimmer {
+        0%   { background-position: -200% 0; }
+        100% { background-position:  200% 0; }
+      }
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+      }
+    `}</style>
+  );
+}
+
 // ─── UI PRIMITIVES ────────────────────────────────────────────────────────────
-function KpiCard({ label, value, sub, accent = PALETTE.teal, icon, trend }) {
+function KpiCard({ label, value, sub, accent = PALETTE.teal, icon }) {
   return (
     <div style={{
       background: PALETTE.surface,
@@ -62,7 +86,6 @@ function KpiCard({ label, value, sub, accent = PALETTE.teal, icon, trend }) {
       padding: "22px 24px 18px",
       display: "flex", flexDirection: "column", gap: 8,
       boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-      position: "relative",
     }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <span style={{
@@ -75,17 +98,7 @@ function KpiCard({ label, value, sub, accent = PALETTE.teal, icon, trend }) {
         fontSize: 32, fontWeight: 700, color: PALETTE.navy,
         fontFamily: "'Playfair Display',serif", lineHeight: 1, letterSpacing: -1,
       }}>{value}</span>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {sub && <span style={{ fontSize: 11, color: accent, fontFamily: "'DM Mono',monospace" }}>{sub}</span>}
-        {trend && (
-          <span style={{
-            fontSize: 10, padding: "2px 7px", borderRadius: 12,
-            background: trend > 0 ? "#ECFDF5" : "#FEF2F2",
-            color: trend > 0 ? "#065F46" : "#991B1B",
-            fontFamily: "'DM Mono',monospace", fontWeight: 700,
-          }}>{trend > 0 ? "▲" : "▼"} {Math.abs(trend)}%</span>
-        )}
-      </div>
+      {sub && <span style={{ fontSize: 11, color: accent, fontFamily: "'DM Mono',monospace" }}>{sub}</span>}
     </div>
   );
 }
@@ -107,11 +120,11 @@ function SectionHeader({ children, accent = PALETTE.teal, description }) {
   );
 }
 
-const ChartTooltip = ({ active, payload, label, accent }) => {
+const ChartTooltipUI = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
     <div style={{
-      background: PALETTE.navy, border: "none", borderRadius: 6,
+      background: PALETTE.navy, borderRadius: 6,
       padding: "10px 16px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
     }}>
       <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, fontFamily: "'DM Mono',monospace", marginBottom: 3 }}>{label}</p>
@@ -164,8 +177,266 @@ function ChartCard({ children, style }) {
   );
 }
 
+function Spinner() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" style={{ animation: "spin 0.75s linear infinite" }}>
+      <circle cx="7" cy="7" r="5.5" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+      <path d="M7 1.5 A5.5 5.5 0 0 1 12.5 7" fill="none" stroke="#FFF" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
+function LoginScreen({ onLogin }) {
+  const [key, setKey]         = useState("");
+  const [show, setShow]       = useState(false);
+  const [error, setError]     = useState("");
+  const [loading, setLoading] = useState(false);
+  const inputRef              = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const trimmed = key.trim();
+    if (!trimmed) { setError("Please enter your tenant API key."); return; }
+    setError("");
+    setLoading(true);
+
+    // Validate key by probing the summary endpoint
+    try {
+      const res = await fetch(`${TENANT_BASE}/summary`, {
+        headers: { Authorization: `Bearer ${trimmed}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      onLogin(trimmed);
+    } catch (err) {
+      setError(`Invalid key or server unreachable (${err.message}). Please try again.`);
+      setLoading(false);
+    }
+  }
+
+  const canSubmit = key.trim().length > 0 && !loading;
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+    }}>
+      {/* ── Left: brand panel ── */}
+      <div style={{
+        background: PALETTE.navy,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        padding: "52px 56px",
+        position: "relative",
+        overflow: "hidden",
+      }}>
+        {/* Decorative rings */}
+        {[
+          { t: -120, r: -120, s: 500 },
+          { t: -60,  r: -60,  s: 340 },
+          { b: -80,  l: -80,  s: 400 },
+        ].map((ring, i) => (
+          <div key={i} style={{
+            position: "absolute",
+            top: ring.t, right: ring.r, bottom: ring.b, left: ring.l,
+            width: ring.s, height: ring.s,
+            borderRadius: "50%",
+            border: `1px solid rgba(255,255,255,${i === 2 ? 0.04 : i === 1 ? 0.07 : 0.05})`,
+          }} />
+        ))}
+
+        {/* Logo */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 8,
+            background: PALETTE.teal,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 12, fontWeight: 700, color: "#FFF",
+            fontFamily: "'DM Mono',monospace", letterSpacing: 1,
+          }}>JR</div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "#FFF", fontFamily: "'Playfair Display',serif", letterSpacing: 0.3, lineHeight: 1 }}>Monetization</div>
+            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", letterSpacing: 2, fontFamily: "'DM Mono',monospace" }}>ANALYTICS SUITE</div>
+          </div>
+        </div>
+
+        {/* Hero copy */}
+        <div style={{ position: "relative" }}>
+          <div style={{ width: 40, height: 2, background: PALETTE.teal, borderRadius: 1, marginBottom: 28 }} />
+          <h1 style={{
+            fontSize: 42, fontWeight: 700, color: "#FFF",
+            fontFamily: "'Playfair Display',serif", lineHeight: 1.15,
+            letterSpacing: -1, marginBottom: 20,
+          }}>
+            Your game's<br />revenue,<br />
+            <span style={{ color: PALETTE.teal }}>at a glance.</span>
+          </h1>
+          <p style={{
+            fontSize: 13, color: "rgba(255,255,255,0.5)",
+            fontFamily: "'DM Mono',monospace", lineHeight: 1.7, maxWidth: 340,
+          }}>
+            Real-time analytics for game monetization — track revenue, conversion, product rankings, and how you stack up against peers.
+          </p>
+
+          {/* Feature pills */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 32 }}>
+            {["Revenue Metrics", "Conversion Funnel", "Product Rankings", "Competitive Rank", "Platform Admin"].map((f) => (
+              <span key={f} style={{
+                fontSize: 10, padding: "5px 12px", borderRadius: 20,
+                border: "1px solid rgba(255,255,255,0.12)",
+                color: "rgba(255,255,255,0.55)",
+                fontFamily: "'DM Mono',monospace", letterSpacing: 0.5,
+              }}>{f}</span>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", fontFamily: "'DM Mono',monospace", letterSpacing: 1.5, position: "relative" }}>
+          CONFIDENTIAL · FOR AUTHORIZED TENANTS ONLY
+        </div>
+      </div>
+
+      {/* ── Right: login form ── */}
+      <div style={{
+        background: PALETTE.surface,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "60px 72px",
+      }}>
+        <div style={{ width: "100%", maxWidth: 400 }}>
+
+          {/* Heading */}
+          <div style={{ marginBottom: 40 }}>
+            <h2 style={{
+              fontSize: 26, fontWeight: 700, color: PALETTE.navy,
+              fontFamily: "'Playfair Display',serif", letterSpacing: -0.5, marginBottom: 8,
+            }}>Sign in to your dashboard</h2>
+            <p style={{ fontSize: 12, color: PALETTE.light, fontFamily: "'DM Mono',monospace", lineHeight: 1.6 }}>
+              Enter the API key for your tenant to access your game's analytics.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div>
+              <label style={{
+                display: "block", fontSize: 10, letterSpacing: 1.5,
+                textTransform: "uppercase", color: PALETTE.mid,
+                fontFamily: "'DM Mono',monospace", marginBottom: 8,
+              }}>
+                Tenant API Key
+              </label>
+              <div style={{ position: "relative" }}>
+                <input
+                  ref={inputRef}
+                  type={show ? "text" : "password"}
+                  value={key}
+                  onChange={(e) => { setKey(e.target.value); setError(""); }}
+                  placeholder="tk_live_••••••••••••••••"
+                  autoComplete="off"
+                  spellCheck={false}
+                  style={{
+                    width: "100%",
+                    padding: "13px 56px 13px 16px",
+                    border: `1px solid ${error ? "#FECACA" : PALETTE.border}`,
+                    borderRadius: 8,
+                    background: error ? "#FEF2F2" : PALETTE.surface,
+                    fontSize: 13,
+                    fontFamily: "'DM Mono',monospace",
+                    color: PALETTE.navy,
+                    outline: "none",
+                    transition: "border-color 0.2s, box-shadow 0.2s",
+                    letterSpacing: show ? 0 : 2,
+                  }}
+                  onFocus={(e) => { e.target.style.borderColor = PALETTE.teal; e.target.style.boxShadow = `0 0 0 3px ${PALETTE.teal}20`; }}
+                  onBlur={(e)  => { e.target.style.borderColor = error ? "#FECACA" : PALETTE.border; e.target.style.boxShadow = "none"; }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShow((s) => !s)}
+                  style={{
+                    position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
+                    background: "none", border: "none", cursor: "pointer",
+                    fontSize: 10, color: PALETTE.light, fontFamily: "'DM Mono',monospace",
+                    letterSpacing: 1, padding: 0,
+                  }}
+                >{show ? "HIDE" : "SHOW"}</button>
+              </div>
+              {error && (
+                <p style={{ marginTop: 8, fontSize: 11, color: "#DC2626", fontFamily: "'DM Mono',monospace", lineHeight: 1.5 }}>
+                  {error}
+                </p>
+              )}
+            </div>
+
+            {/* Primary CTA */}
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              style={{
+                width: "100%",
+                padding: "14px",
+                background: canSubmit ? PALETTE.teal : PALETTE.border,
+                border: "none", borderRadius: 8,
+                color: canSubmit ? "#FFF" : PALETTE.light,
+                fontSize: 12, fontFamily: "'DM Mono',monospace",
+                fontWeight: 600, letterSpacing: 1.5,
+                cursor: canSubmit ? "pointer" : "not-allowed",
+                transition: "all 0.2s",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+              }}
+              onMouseEnter={(e) => { if (canSubmit) e.currentTarget.style.background = "#0A5F63"; }}
+              onMouseLeave={(e) => { if (canSubmit) e.currentTarget.style.background = PALETTE.teal; }}
+            >
+              {loading ? <><Spinner />VERIFYING KEY…</> : "ACCESS DASHBOARD →"}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "28px 0" }}>
+            <div style={{ flex: 1, height: 1, background: PALETTE.border }} />
+            <span style={{ fontSize: 10, color: PALETTE.light, fontFamily: "'DM Mono',monospace", letterSpacing: 1 }}>OR</span>
+            <div style={{ flex: 1, height: 1, background: PALETTE.border }} />
+          </div>
+
+          {/* Admin shortcut */}
+          <button
+            type="button"
+            onClick={() => onLogin(null)}
+            style={{
+              width: "100%", padding: "13px",
+              background: "transparent",
+              border: `1px solid ${PALETTE.border}`,
+              borderRadius: 8, color: PALETTE.indigo,
+              fontSize: 12, fontFamily: "'DM Mono',monospace",
+              fontWeight: 600, letterSpacing: 1.2, cursor: "pointer",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = `${PALETTE.indigo}0A`; e.currentTarget.style.borderColor = PALETTE.indigo; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = PALETTE.border; }}
+          >
+            CONTINUE AS PLATFORM ADMIN →
+          </button>
+
+          <p style={{
+            marginTop: 28, fontSize: 10, color: PALETTE.light,
+            fontFamily: "'DM Mono',monospace", textAlign: "center", lineHeight: 1.8,
+          }}>
+            Your key is never stored or sent anywhere except<br />your own API. It lives in memory for this session only.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── TENANT DASHBOARD ─────────────────────────────────────────────────────────
-function TenantDashboard() {
+function TenantDashboard({ tenantFetch }) {
   const accent = PALETTE.teal;
   const [overview,    setOverview]    = useState(null);
   const [timeseries,  setTimeseries]  = useState(null);
@@ -188,7 +459,7 @@ function TenantDashboard() {
       else setErrors(e => ({ ...e, topProducts: tp.reason?.message }));
       setLoading(false);
     });
-  }, []);
+  }, [tenantFetch]);
 
   const chartData = (timeseries ?? []).map(row => ({
     date: row.date?.length === 10
@@ -201,8 +472,6 @@ function TenantDashboard() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-
-      {/* KPI Row */}
       <div>
         <SectionHeader accent={accent} description="Period performance summary">Revenue Metrics</SectionHeader>
         {errors.overview && <ErrorBanner msg={errors.overview} />}
@@ -219,7 +488,6 @@ function TenantDashboard() {
         }
       </div>
 
-      {/* Revenue Timeseries */}
       <div>
         <SectionHeader accent={accent} description="Daily revenue trend">Revenue Timeline</SectionHeader>
         {errors.timeseries && <ErrorBanner msg={errors.timeseries} />}
@@ -238,7 +506,7 @@ function TenantDashboard() {
                   <CartesianGrid strokeDasharray="2 4" stroke={PALETTE.border} vertical={false} />
                   <XAxis dataKey="date" tick={{ fill: PALETTE.light, fontSize: 10, fontFamily: "'DM Mono',monospace" }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={fmtAxis} tick={{ fill: PALETTE.light, fontSize: 10, fontFamily: "'DM Mono',monospace" }} axisLine={false} tickLine={false} width={60} />
-                  <Tooltip content={<ChartTooltip accent={accent} />} />
+                  <Tooltip content={<ChartTooltipUI />} />
                   <Area type="monotone" dataKey="revenue" stroke={accent} strokeWidth={2.5} fill="url(#tGrad)" dot={false} activeDot={{ r: 5, fill: accent, stroke: PALETTE.surface, strokeWidth: 2 }} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -247,7 +515,6 @@ function TenantDashboard() {
         }
       </div>
 
-      {/* Top Products */}
       <div>
         <SectionHeader accent={accent} description="Highest earning SKUs by revenue">Top Products</SectionHeader>
         {errors.topProducts && <ErrorBanner msg={errors.topProducts} />}
@@ -260,7 +527,7 @@ function TenantDashboard() {
                   <BarChart data={topProducts} layout="vertical" barSize={12}>
                     <XAxis type="number" tickFormatter={fmtAxis} tick={{ fill: PALETTE.light, fontSize: 10, fontFamily: "'DM Mono',monospace" }} axisLine={false} tickLine={false} />
                     <YAxis type="category" dataKey="sku" tick={{ fill: PALETTE.slate, fontSize: 11, fontFamily: "'DM Mono',monospace" }} axisLine={false} tickLine={false} width={100} />
-                    <Tooltip content={<ChartTooltip accent={accent} />} />
+                    <Tooltip content={<ChartTooltipUI />} />
                     <Bar dataKey="revenue" radius={[0, 3, 3, 0]}>
                       {topProducts.map((_, i) => <Cell key={i} fill={ACCENT_COLORS[i % ACCENT_COLORS.length]} />)}
                     </Bar>
@@ -293,17 +560,12 @@ function TenantDashboard() {
         }
       </div>
 
-      {/* Payment Funnel */}
       {overview && (
         <div>
           <SectionHeader accent={accent} description="Order conversion breakdown">Payment Funnel</SectionHeader>
           <div style={{
-            background: PALETTE.surface,
-            border: `1px solid ${PALETTE.border}`,
-            borderRadius: 8,
-            padding: "24px 32px",
-            display: "flex",
-            alignItems: "center",
+            background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, borderRadius: 8,
+            padding: "24px 32px", display: "flex", alignItems: "center",
             boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
           }}>
             {[
@@ -311,18 +573,14 @@ function TenantDashboard() {
               { label: "Paid",      val: overview.paid,   color: accent },
               { label: "Failed",    val: (overview.orders ?? 0) - (overview.paid ?? 0), color: PALETTE.rose },
             ].map((s, i) => (
-              <div key={s.label} style={{ flex: 1, display: "flex", alignItems: "center", gap: 0 }}>
-                {i > 0 && (
-                  <div style={{ flex: "0 0 32px", textAlign: "center", color: PALETTE.border, fontSize: 20 }}>›</div>
-                )}
+              <div key={s.label} style={{ flex: 1, display: "flex", alignItems: "center" }}>
+                {i > 0 && <div style={{ flex: "0 0 32px", textAlign: "center", color: PALETTE.border, fontSize: 20 }}>›</div>}
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
                   <div style={{
                     width: 56, height: 56, borderRadius: "50%",
-                    border: `2px solid ${s.color}`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
+                    border: `2px solid ${s.color}`, display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 20, fontWeight: 700, color: s.color,
-                    fontFamily: "'Playfair Display',serif",
-                    background: `${s.color}0D`,
+                    fontFamily: "'Playfair Display',serif", background: `${s.color}0D`,
                   }}>{s.val ?? "—"}</div>
                   <span style={{ fontSize: 10, color: PALETTE.light, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'DM Mono',monospace" }}>{s.label}</span>
                   <div style={{ height: 2, width: "50%", background: s.color, borderRadius: 1, opacity: 0.5 }} />
@@ -377,7 +635,6 @@ function AdminDashboard() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-
       <div>
         <SectionHeader accent={accent} description="Platform-wide performance across all tenants">Platform Overview</SectionHeader>
         {errors.overview && <ErrorBanner msg={errors.overview} />}
@@ -412,7 +669,7 @@ function AdminDashboard() {
                   <CartesianGrid strokeDasharray="2 4" stroke={PALETTE.border} vertical={false} />
                   <XAxis dataKey="date" tick={{ fill: PALETTE.light, fontSize: 10, fontFamily: "'DM Mono',monospace" }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={fmtAxis} tick={{ fill: PALETTE.light, fontSize: 10, fontFamily: "'DM Mono',monospace" }} axisLine={false} tickLine={false} width={62} />
-                  <Tooltip content={<ChartTooltip accent={accent} />} />
+                  <Tooltip content={<ChartTooltipUI />} />
                   <Area type="monotone" dataKey="revenue" stroke={accent} strokeWidth={2.5} fill="url(#aGrad)" dot={false} activeDot={{ r: 5, fill: accent, stroke: PALETTE.surface, strokeWidth: 2 }} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -488,7 +745,7 @@ function AdminDashboard() {
                   <CartesianGrid strokeDasharray="2 4" stroke={PALETTE.border} vertical={false} />
                   <XAxis dataKey="sku" tick={{ fill: PALETTE.mid, fontSize: 11, fontFamily: "'DM Mono',monospace" }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={fmtAxis} tick={{ fill: PALETTE.light, fontSize: 10, fontFamily: "'DM Mono',monospace" }} axisLine={false} tickLine={false} width={62} />
-                  <Tooltip content={<ChartTooltip accent={accent} />} />
+                  <Tooltip content={<ChartTooltipUI />} />
                   <Bar dataKey="revenue" radius={[3, 3, 0, 0]}>
                     {topProducts.map((_, i) => <Cell key={i} fill={ACCENT_COLORS[i % ACCENT_COLORS.length]} />)}
                   </Bar>
@@ -503,7 +760,7 @@ function AdminDashboard() {
 }
 
 // ─── TENANT RANK VIEW ─────────────────────────────────────────────────────────
-function TenantRankView() {
+function TenantRankView({ tenantFetch }) {
   const accent = PALETTE.gold;
   const [tenants,  setTenants]  = useState(null);
   const [overview, setOverview] = useState(null);
@@ -522,7 +779,7 @@ function TenantRankView() {
       else setErrors(e => ({ ...e, overview: ov.reason?.message }));
       setLoading(false);
     });
-  }, []);
+  }, [tenantFetch]);
 
   const ranked  = (tenants ?? []).map((t, i) => ({ ...t, rank: i + 1 }));
   const myIdx   = ranked.findIndex(t => t.revenue === overview?.revenue);
@@ -532,29 +789,19 @@ function TenantRankView() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
       <SectionHeader accent={accent} description="Your performance relative to all active tenants">Competitive Rank</SectionHeader>
-
       {(errors.tenants || errors.overview) && <ErrorBanner msg={errors.tenants || errors.overview} />}
 
-      {/* Hero card */}
       {loading ? <Skeleton h={150} />
         : me
           ? (
             <div style={{
-              background: PALETTE.surface,
-              border: `1px solid ${PALETTE.border}`,
-              borderLeft: `4px solid ${accent}`,
-              borderRadius: 8,
-              padding: "28px 32px",
-              display: "flex", alignItems: "center", gap: 36,
+              background: PALETTE.surface, border: `1px solid ${PALETTE.border}`,
+              borderLeft: `4px solid ${accent}`, borderRadius: 8,
+              padding: "28px 32px", display: "flex", alignItems: "center", gap: 36,
               boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
             }}>
               <div style={{ textAlign: "center", minWidth: 80 }}>
-                <div style={{
-                  fontSize: 64, lineHeight: 1,
-                  fontFamily: "'Playfair Display',serif",
-                  fontWeight: 700, color: RANK_COLORS[safeIdx] ?? PALETTE.slate,
-                  letterSpacing: -2,
-                }}>#{me.rank}</div>
+                <div style={{ fontSize: 64, lineHeight: 1, fontFamily: "'Playfair Display',serif", fontWeight: 700, color: RANK_COLORS[safeIdx] ?? PALETTE.slate, letterSpacing: -2 }}>#{me.rank}</div>
                 <div style={{ fontSize: 9, letterSpacing: 2, color: PALETTE.light, fontFamily: "'DM Mono',monospace", marginTop: 4 }}>YOUR RANK</div>
               </div>
               <div style={{ width: 1, height: 60, background: PALETTE.border }} />
@@ -572,13 +819,7 @@ function TenantRankView() {
                 </div>
               </div>
               {ranked[0] && me.rank > 1 && (
-                <div style={{
-                  background: "#FEF2F2",
-                  border: `1px solid #FECACA`,
-                  borderRadius: 8,
-                  padding: "16px 20px",
-                  textAlign: "right",
-                }}>
+                <div style={{ background: "#FEF2F2", border: `1px solid #FECACA`, borderRadius: 8, padding: "16px 20px", textAlign: "right" }}>
                   <div style={{ fontSize: 9, color: PALETTE.light, fontFamily: "'DM Mono',monospace", marginBottom: 4, letterSpacing: 1 }}>VS LEADER</div>
                   <div style={{ fontSize: 22, fontWeight: 700, color: "#991B1B", fontFamily: "'Playfair Display',serif" }}>-{pct(ranked[0].revenue - me.revenue, ranked[0].revenue)}</div>
                   <div style={{ fontSize: 10, color: "#DC2626", fontFamily: "'DM Mono',monospace" }}>{fmt(ranked[0].revenue - me.revenue)} gap</div>
@@ -589,7 +830,6 @@ function TenantRankView() {
           : !errors.tenants && <Empty msg="Could not determine your rank." />
       }
 
-      {/* Leaderboard */}
       {loading ? <Skeleton h={300} />
         : !ranked.length ? <Empty msg="No leaderboard data available." />
         : (
@@ -603,8 +843,7 @@ function TenantRankView() {
                   borderBottom: i < ranked.length - 1 ? `1px solid ${PALETTE.border}` : "none",
                   background: isMe ? `${accent}08` : "transparent",
                   borderLeft: isMe ? `3px solid ${accent}` : "3px solid transparent",
-                  display: "flex", alignItems: "center", gap: 16,
-                  transition: "background 0.15s",
+                  display: "flex", alignItems: "center", gap: 16, transition: "background 0.15s",
                 }}
                   onMouseEnter={e => { if (!isMe) e.currentTarget.style.background = PALETTE.bg; }}
                   onMouseLeave={e => { if (!isMe) e.currentTarget.style.background = "transparent"; }}
@@ -635,9 +874,14 @@ function TenantRankView() {
 }
 
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
+// tenantKey state meanings:
+//   null   → show login screen (initial)
+//   false  → admin bypass (no tenant key — uses env ADMIN_API_KEY)
+//   string → authenticated tenant (key entered at login)
 export default function App() {
-  const [mode, setMode] = useState("tenant");
-  const [time, setTime] = useState("");
+  const [tenantKey, setTenantKey] = useState(null);
+  const [mode, setMode]           = useState("tenant");
+  const [time, setTime]           = useState("");
 
   useEffect(() => {
     const tick = () => setTime(new Date().toLocaleTimeString("en-US", { hour12: false }));
@@ -646,29 +890,57 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
+  // Build a tenantFetch bound to the active key
+  const activeTenantFetch = makeTenantFetch(
+    typeof tenantKey === "string" ? tenantKey : ADMIN_API_KEY
+  );
+
+  function handleLogin(key) {
+    if (key === null) {
+      // Admin bypass
+      setTenantKey(false);
+      setMode("admin");
+    } else {
+      setTenantKey(key);
+      setMode("tenant");
+    }
+  }
+
+  function handleSignOut() {
+    setTenantKey(null);
+    setMode("tenant");
+  }
+
+  // ── Login screen ──
+  if (tenantKey === null) {
+    return (
+      <>
+        <GlobalStyles />
+        <LoginScreen onLogin={handleLogin} />
+      </>
+    );
+  }
+
+  const isAdminOnly = tenantKey === false;
+
   const tabs = [
-    { id: "tenant", label: "Game Dashboard", accent: PALETTE.teal },
-    { id: "rank",   label: "My Rank",        accent: PALETTE.gold },
-    { id: "admin",  label: "Admin Platform", accent: PALETTE.indigo },
+    ...(!isAdminOnly ? [
+      { id: "tenant", label: "Game Dashboard", accent: PALETTE.teal },
+      { id: "rank",   label: "My Rank",        accent: PALETTE.gold },
+    ] : []),
+    { id: "admin", label: "Admin Platform", accent: PALETTE.indigo },
   ];
+
   const currentAccent = tabs.find(t => t.id === mode)?.accent ?? PALETTE.teal;
+
+  // Mask key for display: show first 8 chars then ••••
+  const maskedKey = typeof tenantKey === "string"
+    ? `${tenantKey.slice(0, 8)}••••`
+    : "Admin";
 
   return (
     <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html { font-size: 16px; }
-        body { background: ${PALETTE.bg}; color: ${PALETTE.slate}; font-family: 'DM Mono', monospace; -webkit-font-smoothing: antialiased; }
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-track { background: ${PALETTE.bg}; }
-        ::-webkit-scrollbar-thumb { background: ${PALETTE.border}; border-radius: 3px; }
-        @keyframes shimmer {
-          0%   { background-position: -200% 0; }
-          100% { background-position:  200% 0; }
-        }
-      `}</style>
-
+      <GlobalStyles />
       <div style={{ minHeight: "100vh", background: PALETTE.bg }}>
 
         {/* Header */}
@@ -684,12 +956,10 @@ export default function App() {
             {/* Logo */}
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{
-                width: 30, height: 30, borderRadius: 6,
-                background: currentAccent,
+                width: 30, height: 30, borderRadius: 6, background: currentAccent,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 11, fontWeight: 700, color: "#FFF",
-                fontFamily: "'DM Mono',monospace", letterSpacing: 1,
-                transition: "background 0.4s",
+                fontFamily: "'DM Mono',monospace", letterSpacing: 1, transition: "background 0.4s",
               }}>JR</div>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: PALETTE.navy, fontFamily: "'Playfair Display',serif", letterSpacing: 0.3, lineHeight: 1 }}>Monetization</div>
@@ -712,13 +982,40 @@ export default function App() {
               ))}
             </nav>
 
-            {/* Live indicator */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Right: key chip + live + sign out */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Active key indicator */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 7,
+                background: PALETTE.bg, border: `1px solid ${PALETTE.border}`,
+                borderRadius: 20, padding: "4px 12px",
+              }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: currentAccent }} />
+                <span style={{ fontSize: 10, color: PALETTE.slate, fontFamily: "'DM Mono',monospace", letterSpacing: 0.5 }}>
+                  {maskedKey}
+                </span>
+              </div>
+
+              {/* Live clock */}
               <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 20, padding: "4px 12px" }}>
                 <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981" }} />
                 <span style={{ fontSize: 10, color: "#065F46", fontFamily: "'DM Mono',monospace", letterSpacing: 1 }}>LIVE</span>
               </div>
               <span style={{ fontSize: 11, color: PALETTE.light, fontFamily: "'DM Mono',monospace" }}>{time}</span>
+
+              {/* Sign out */}
+              <button
+                onClick={handleSignOut}
+                style={{
+                  padding: "5px 12px", borderRadius: 6,
+                  border: `1px solid ${PALETTE.border}`,
+                  background: "transparent", color: PALETTE.light,
+                  fontSize: 10, fontFamily: "'DM Mono',monospace",
+                  cursor: "pointer", letterSpacing: 1, transition: "all 0.15s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = PALETTE.rose; e.currentTarget.style.borderColor = PALETTE.rose; }}
+                onMouseLeave={e => { e.currentTarget.style.color = PALETTE.light; e.currentTarget.style.borderColor = PALETTE.border; }}
+              >SIGN OUT</button>
             </div>
           </div>
         </header>
@@ -749,10 +1046,10 @@ export default function App() {
         </div>
 
         {/* Main */}
-        <main style={{ maxWidth: 1240, margin: "0 auto", padding: "32px 40px 60px", position: "relative" }}>
-          {mode === "tenant" && <TenantDashboard />}
-          {mode === "admin"  && <AdminDashboard  />}
-          {mode === "rank"   && <TenantRankView  />}
+        <main style={{ maxWidth: 1240, margin: "0 auto", padding: "32px 40px 60px" }}>
+          {mode === "tenant" && !isAdminOnly && <TenantDashboard tenantFetch={activeTenantFetch} />}
+          {mode === "admin"  && <AdminDashboard />}
+          {mode === "rank"   && !isAdminOnly && <TenantRankView tenantFetch={activeTenantFetch} />}
         </main>
 
         {/* Footer */}
