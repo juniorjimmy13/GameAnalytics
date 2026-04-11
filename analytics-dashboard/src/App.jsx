@@ -464,7 +464,7 @@ function AdminDashboard() {
               return (
                 <div key={t.tenantName ?? i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ width: 18, fontSize: 11, fontWeight: 700, color: rc, textAlign: "center", flexShrink: 0 }}>#{i+1}</span>
-                  <span style={{ flex: 1, fontSize: 11, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.tenantId}</span>
+                  <span style={{ flex: 1, fontSize: 11, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.tenantName}</span>
                   <div style={{ width: 60, height: 5, background: T.faint, borderRadius: 3, overflow: "hidden" }}>
                     <div style={{ width: `${barW}%`, height: "100%", background: rc, borderRadius: 3 }} />
                   </div>
@@ -539,7 +539,7 @@ function TenantRankView({ tenantFetch }) {
               </div>
               <div style={{ width: 1, height: 56, background: T.border }} />
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: T.text, marginBottom: 10 }}>{me.tenantId}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: T.text, marginBottom: 10 }}>{me.tenantName}</div>
                 <div style={{ display: "flex", gap: 28 }}>
                   <div>
                     <div style={{ fontSize: 22, fontWeight: 700, color: T.amber }}>{fmt(me.revenue)}</div>
@@ -576,7 +576,7 @@ function TenantRankView({ tenantFetch }) {
               const barW = ranked[0]?.revenue ? ((t.revenue / ranked[0].revenue) * 100).toFixed(0) : 0;
               const rc   = RANK_COLORS[i] ?? T.muted;
               return (
-                <div key={t.tenantId ?? i} style={{
+                <div key={t.tenantName ?? i} style={{
                   display: "flex", alignItems: "center", gap: 14,
                   padding: "9px 12px",
                   borderRadius: 6,
@@ -586,7 +586,7 @@ function TenantRankView({ tenantFetch }) {
                 }}>
                   <span style={{ width: 22, fontSize: 13, fontWeight: 700, color: rc, textAlign: "center" }}>#{t.rank}</span>
                   <span style={{ flex: "0 0 160px", fontSize: 12, color: isMe ? T.text : T.muted, fontWeight: isMe ? 700 : 400, display: "flex", alignItems: "center", gap: 6 }}>
-                    {t.tenantId}
+                    {t.tenantName}
                     {isMe && <span style={{ fontSize: 9, background: T.amber, color: "#000", borderRadius: 3, padding: "1px 5px", letterSpacing: 1.5, fontWeight: 700 }}>YOU</span>}
                   </span>
                   <div style={{ flex: 1, height: 6, background: T.faint, borderRadius: 3, overflow: "hidden" }}>
