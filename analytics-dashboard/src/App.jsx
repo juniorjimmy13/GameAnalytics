@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef,useCallback } from "react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Cell
@@ -618,7 +618,10 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  const activeTenantFetch = makeTenantFetch(typeof tenantKey === "string" ? tenantKey : ADMIN_API_KEY);
+  const activeTenantFetch = useCallback(
+  makeTenantFetch(typeof tenantKey === "string" ? tenantKey : ADMIN_API_KEY),
+  [tenantKey]
+);
 
   function handleLogin(key) {
     if (key === null) { setTenantKey(false); setMode("admin"); }
