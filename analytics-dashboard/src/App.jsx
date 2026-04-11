@@ -462,7 +462,7 @@ function AdminDashboard() {
               const barW = topTenants[0]?.revenue ? ((t.revenue / topTenants[0].revenue) * 100).toFixed(0) : 0;
               const rc   = ["#F59E0B","#94A3B8","#CD7F32",T.blue,T.teal,T.purple][i] ?? T.muted;
               return (
-                <div key={t.tenantId ?? i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div key={t.tenantName ?? i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ width: 18, fontSize: 11, fontWeight: 700, color: rc, textAlign: "center", flexShrink: 0 }}>#{i+1}</span>
                   <span style={{ flex: 1, fontSize: 11, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.tenantId}</span>
                   <div style={{ width: 60, height: 5, background: T.faint, borderRadius: 3, overflow: "hidden" }}>
