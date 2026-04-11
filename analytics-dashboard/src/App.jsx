@@ -306,7 +306,7 @@ function TenantDashboard({ tenantFetch }) {
   }));
 
   const conv     = overview ? pct(overview.paidOrders, overview.orders) : "—";
-  const failed   = overview ? (overview.orders ?? 0) - (overview.paid ?? 0) : 0;
+  const failed   = overview ? (overview.orders ?? 0) - (overview.paidOrders ?? 0) : 0;
   const total    = overview?.orders ?? 0;
 
   return (
@@ -319,7 +319,7 @@ function TenantDashboard({ tenantFetch }) {
           : <>
               <KpiCard label="Total Revenue"  value={fmt(overview?.revenue)}  sub="This period"    accent={T.teal}   delta="+12%" />
               <KpiCard label="Total Orders"   value={overview?.orders ?? "—"} sub="All attempts"   accent={T.blue}   />
-              <KpiCard label="Paid Orders"    value={overview?.paid ?? "—"}   sub="Successful"     accent={T.amber}  />
+              <KpiCard label="Paid Orders"    value={overview?.paidOrders ?? "—"}   sub="Successful"     accent={T.amber}  />
               <KpiCard label="Conversion"     value={conv}                    sub={`${overview?.paid ?? 0} of ${total}`} accent={T.coral} delta="+2.1%" />
             </>
         }
