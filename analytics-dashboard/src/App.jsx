@@ -305,7 +305,7 @@ function TenantDashboard({ tenantFetch }) {
     revenue: r.revenue ?? 0,
   }));
 
-  const conv     = overview ? pct(overview.paid, overview.orders) : "—";
+  const conv     = overview ? pct(overview.paidOrders, overview.orders) : "—";
   const failed   = overview ? (overview.orders ?? 0) - (overview.paid ?? 0) : 0;
   const total    = overview?.orders ?? 0;
 
