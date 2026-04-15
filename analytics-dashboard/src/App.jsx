@@ -20,14 +20,14 @@ const adminFetch = (path) =>
 // ─── HELPERS ───────────────────────────────────────────────────────────────
 const fmt = (v) => {
   if (v == null) return "—";
-  if (v >= 1_000_000) return `KSh ${(v / 1_000_000).toFixed(2)}M`;
-  if (v >= 1_000)     return `KSh ${(v / 1_000).toFixed(1)}K`;
+  if (v >= 1_000_000) return `KES ${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000)     return `KES ${(v / 1_000).toFixed(1)}K`;
   return `KSh ${v.toLocaleString()}`;
 };
 
 const fmtAxis = (v) => {
-  if (v >= 1_000_000) return `KSh ${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000)     return `KSh ${(v / 1_000).toFixed(0)}K`;
+  if (v >= 1_000_000) return `KES ${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000)     return `KES ${(v / 1_000).toFixed(0)}K`;
   return `KSh ${v}`;
 };
 const pct = (a, b) => (!b ? "—" : `${((a / b) * 100).toFixed(1)}%`);
