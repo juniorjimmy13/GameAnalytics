@@ -20,9 +20,9 @@ const adminFetch = (path) =>
 // ─── HELPERS ───────────────────────────────────────────────────────────────
 const fmt = (v) => {
   if (v == null) return "—";
-  if (v >= 100_000_000) return `KSh ${(v / 100_000_000).toFixed(2)}M`;
-  if (v >= 10_000)      return `KSh ${(v / 100_000).toFixed(1)}K`;
-  return `KSh ${(v / 100).toFixed(2)}`;
+  if (v >= 1_000_000) return `KSh ${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000)     return `KSh ${(v / 1_000).toFixed(1)}K`;
+  return `KSh ${v.toLocaleString()}`;
 };
 
 const fmtAxis = (v) => {
